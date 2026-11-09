@@ -1,0 +1,46 @@
+# crash test: scenarios/public_02_incidents.yaml, kill -9 at sim minutes 3000 5460 6375 6405 6500 9000  (2026-11-09)
+kill -9 at sim minute 3120 (target 3000); open proposals: []
+kill -9 at sim minute 5460 (target 5460); open proposals: []
+kill -9 at sim minute 6390 (target 6375); open proposals: [('ks_cancel', 'pending', 'apr_00001')]
+kill -9 at sim minute 6405 (target 6405); open proposals: [('ks_cancel', 'pending', 'apr_00001')]
+kill -9 at sim minute 6540 (target 6500); open proposals: []
+kill -9 at sim minute 9180 (target 9000); open proposals: []
+restart, run to the end
+
+## invariants from the store
+approval ids recorded twice: 0  | proposals applied: 1  | apply audit rows: 1  | still in flight at end: 0  | incident flows started: 1
+
+## crashed run vs uninterrupted run (reports/public_02_incidents.md)
+IDENTICAL: outcomes, applied changes, governance counters, MTTR and credits match the uninterrupted run
+## Outcomes vs baseline (no-op controller)
+| workflow | conclusion rate | Δ | pickup | Δ | engagement | Δ | engagement gap captured | hallucinated calls (base) |
+|---|---|---|---|---|---|---|---|---|
+| ks_cancel | 0.259 | +4.6% | 0.183 | -0.2% | 0.497 | +4.3% | 25% | 77 (330) |
+| nw_kyc | 0.378 | +0.9% | 0.241 | -0.6% | 0.601 | +1.4% | 0% | 31 (31) |
+| nw_renewal | 0.431 | +1.2% | 0.263 | +0.4% | 0.552 | +0.7% | 5% | 70 (55) |
+| ALL | 0.342 | +2.2% | 0.222 | -0.1% | 0.541 | +2.1% | 12% | 178 (416) |
+## Changes applied by the controller
+1 applied — beneficial: 1
+- ks_cancel v3 (controller_approved) dims=['prompt_version'] engageΔ=+0.102 didΔ=+0.000 → **beneficial**
+## Governance
+```
+{
+  "approval_requests": 1,
+  "decisions": {
+    "approved": 1,
+    "expired": 0
+  },
+  "rejection_reasons": {},
+  "applied_via_approval": 1,
+  "auto_applied": 0,
+  "auto_apply_rejected": 0,
+  "apply_conflicts": 0,
+  "lapsed": 0,
+  "peak_requests_per_24h": {
+    "ks_cancel": 1
+  }
+}
+```
+## Incidents
+    "mttr_minutes": 1410,
+Credits used: 15 · validation runs: 3 · LLM fix calls: 1
