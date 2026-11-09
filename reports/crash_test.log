@@ -1,10 +1,10 @@
 # crash test: scenarios/public_02_incidents.yaml, kill -9 at sim minutes 3000 5460 6375 6405 6500 9000  (2026-11-09)
-kill -9 at sim minute 3120 (target 3000); open proposals: []
+kill -9 at sim minute 3180 (target 3000); open proposals: []
 kill -9 at sim minute 5460 (target 5460); open proposals: []
 kill -9 at sim minute 6390 (target 6375); open proposals: [('ks_cancel', 'pending', 'apr_00001')]
 kill -9 at sim minute 6405 (target 6405); open proposals: [('ks_cancel', 'pending', 'apr_00001')]
 kill -9 at sim minute 6540 (target 6500); open proposals: []
-kill -9 at sim minute 9180 (target 9000); open proposals: []
+kill -9 at sim minute 9060 (target 9000); open proposals: []
 restart, run to the end
 
 ## invariants from the store

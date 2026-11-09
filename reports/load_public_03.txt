@@ -1,0 +1,13 @@
+# Load test: full controller (ingest + detectors + governance) on public_03_load, 2026-11-09
+# 8 CPUs, 7 GB RAM; simulator and controller on the same machine
+# command: scripts/load_test.sh 2
+
+D0 (incl. 7 days of history): 57.2 s wall, 6,377,391 events, 111,493 events/s
+D1: 20.6 s wall, 840,012 events, 40,777 events/s
+peak controller memory (VmHWM): 33 MB
+ingest lag at the last hourly log lines (events not yet in the store when the hour's decisions ran):
+  2026-11-09 14:37:06,434 controller 2027-01-06T06:00 lag=0 events decisions=0 open_proposals=0 credits=400
+  2026-11-09 14:37:06,573 controller 2027-01-06T07:00 lag=0 events decisions=0 open_proposals=0 credits=400
+  2026-11-09 14:37:06,708 controller 2027-01-06T08:00 lag=0 events decisions=0 open_proposals=0 credits=400
+decisions made: 0 log lines with proposals or incident steps
+SRE target: one simulated day in < 600 s

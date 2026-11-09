@@ -25,7 +25,7 @@ applied D4 11:00
 before             17.3%       46.6%          4.10%    4800
 after              16.2%       51.7%          1.03%    4800
   D4 12:00 incident_applied: prompt P1 is live; verifying
-  D4 15:00 incident_resolved: fixed: hallucination 1.5% on P1 (was 4.2%), engagement 53.4% vs 50.4% history
+  D4 15:00 incident_resolved: fixed: hallucination 1.5% on P1 (was 4.2%), engagement 53.4%, pickup 17.2% (before the bad prompt: 50.4%, 16.5%)
 
 $ python -m controller.explain --db state.db --workflow ks_cancel --at "D3 15:00"
 # ks_cancel at D3 15:00 (2027-01-07T15:00:00+05:30)
@@ -46,7 +46,7 @@ after              17.3%       46.6%          4.10%    4800
   D4 11:00 applied: applied approved change -> v3
   D4 11:00 config_applied: controller_approved changed prompt_version -> v3
   D4 12:00 incident_applied: prompt P1 is live; verifying
-  D4 15:00 incident_resolved: fixed: hallucination 1.5% on P1 (was 4.2%), engagement 53.4% vs 50.4% history
+  D4 15:00 incident_resolved: fixed: hallucination 1.5% on P1 (was 4.2%), engagement 53.4%, pickup 17.2% (before the bad prompt: 50.4%, 16.5%)
 
 $ python -m controller.explain --db state.db --view
 # Controller view at D10 00:00   (ingest lag 0 events, credits left 185.0)
