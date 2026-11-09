@@ -1,0 +1,11 @@
+# scripts/ingest_crash_check.sh scenarios/public_01_dev.yaml 5 4320   (2026-11-09)
+kill -9 #1 at cursor -1|0
+kill -9 #2 at cursor -1|0
+kill -9 #3 at cursor 2|191403
+kill -9 #4 at cursor 13|201103
+kill -9 #5 at cursor 23|212306
+restart and run to sim minute 4320
+2026-11-09 10:14:33,241 done: sim 2027-01-07T00:00:00+05:30, 16203 events in 0.8s (19251 ev/s), cursor (39, 228509)
+clean ingest of the same chunks (no advance, never killed)
+2026-11-09 10:14:35,155 done: sim 2027-01-07T00:00:00+05:30, 228509 events in 1.7s (133114 ev/s), cursor (39, 228509)
+PASS: killed-and-restarted store is identical to the clean store (172358 dials)

@@ -146,6 +146,7 @@ class ChunkDelta:
     campaigns: list = field(default_factory=list)    # (campaign_id, wf, ts, version, leads)
     audits: list = field(default_factory=list)       # dicts for add_audit
     approvals: list = field(default_factory=list)    # (approval_id, status, decided_at, reason)
+    applied: list = field(default_factory=list)      # (proposal_id, applied_at) seen in config_changed
 
     def add_call(self, ev):
         hour = ev["ts"][:13]
@@ -193,6 +194,9 @@ def commit_chunk(conn, delta):
             add_audit(conn, **a)
         for approval_id, status, decided_at, reason in delta.approvals:
             set_status_by_approval(conn, approval_id, status, decided_at, reason)
+        for proposal_id, applied_at in delta.applied:
+            conn.execute("""UPDATE proposals SET status = 'applied', applied_at = COALESCE(applied_at, ?)
+                            WHERE proposal_id = ? AND status != 'applied'""", (applied_at, proposal_id))
         conn.execute("UPDATE cursor SET last_chunk = ?, last_event_id = ? WHERE id = 1",
                      (delta.chunk, max(last_event_id, delta.last_event_id)))
     return True

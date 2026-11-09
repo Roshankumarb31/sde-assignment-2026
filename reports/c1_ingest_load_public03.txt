@@ -1,0 +1,9 @@
+# Ingest-only timing on public_03_load (no decisions yet), 2026-11-09, laptop, single process
+# python -m controller.ingest --url <sim> --db state.db --until-minute 1440
+# (history chunk before D0 + 24 hourly advances of D0; wall time includes the simulator generating the day)
+
+events ingested : 6,377,391  (history + D0)
+wall clock      : 59 s
+throughput      : ~108,700 events/s
+peak memory     : 32 MB RSS (controller process)
+SRE target      : one simulated day in < 10 wall-clock minutes  -> met for ingest; re-measure with decisions in step 10
