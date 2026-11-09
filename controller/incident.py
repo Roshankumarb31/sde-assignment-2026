@@ -26,7 +26,13 @@ Choosing the fix is deterministic, never the LLM:
   pass_rate. The change goes through the approver with evidence.validation_run_id, marked urgent.
 
 Verification after apply: once the new prompt has MIN_CONNECTED connected calls, if the incident test
-still fires, or engagement fell significantly versus history, we revert to the known-good prompt.
+still fires, or a KPI fell significantly versus history, we revert to the known-good prompt. The KPIs come
+from the workflow's own objective: the primary may not drop by more than PRIMARY_MAX_REL_DROP (relative),
+the guardrail may not drop by more than its policy max_drop (absolute, e.g. pickup_rate_max_drop 0.02).
+Each drop must also be significant (one-sided p < P_KPI_DROP), so noise on 200 calls doesn't revert.
+KPIs are compared with the 24 h before the bad prompt went live (the last healthy period), not with the
+7-day history: other things move pickup too (public_02 flags a caller ID a day earlier), and comparing
+with history blamed the prompt fix for that. If there's no healthy live period, history is the reference.
 """
 import logging
 from datetime import datetime, timedelta
@@ -41,8 +47,9 @@ log = logging.getLogger("incident")
 MIN_CONNECTED = 200
 RATE_MULTIPLE = 2.0
 P_INCIDENT = 0.001
-P_ENGAGEMENT_DROP = 0.01
-ENGAGEMENT_MAX_REL_DROP = 0.10
+P_KPI_DROP = 0.01
+PRIMARY_MAX_REL_DROP = 0.10
+KPI = {"pickup_rate": ("connected", "dials"), "engagement_rate": ("engaged", "connected")}
 VALIDATION_N = 400
 WINDOW_HOURS = (2, 6, 24)
 P_PER_LOOK = P_INCIDENT / (24 * len(WINDOW_HOURS))
@@ -90,6 +97,17 @@ class IncidentDetector:
         wins = [self.window(wid, prompt, _hour(now, h)) for h in WINDOW_HOURS]
         return min(wins, key=lambda w: self.p_value(w, base))
 
+    def reference(self, wid, prompt, d0):
+        """KPI reference for verification: the 24 h before `prompt` first went live after D0, all prompts."""
+        onset = self.conn.execute(
+            "SELECT MIN(hour) h FROM stats WHERE workflow_id = ? AND dim = 'prompt_version' AND value = ? AND hour >= ?",
+            (wid, prompt, d0[:13])).fetchone()["h"]
+        if onset and onset > d0[:13]:
+            ref = store.total_stats(self.conn, wid, _hour(onset + ":00:00" + d0[19:], 24), until_hour=onset)
+            if ref["connected"] >= MIN_CONNECTED:
+                return ref
+        return self.baseline(wid, d0)
+
     @staticmethod
     def base_rate(base):
         return (base["halluc"] + 1) / (base["connected"] + 2)   # +1/+2 so a clean history isn't a zero rate
@@ -115,7 +133,8 @@ class IncidentDetector:
                     "p_value": self.p_value(cur, base), "p_threshold": P_PER_LOOK}
         known_good = self._known_good_prompt(wid, prompt, d0)
         state = {"phase": "fixing", "bad_prompt": prompt, "known_good": known_good, "detected_at": now,
-                 "detect_evidence": evidence, "suggestions": None, "validations": {}}
+                 "detect_evidence": evidence, "suggestions": None, "validations": {},
+                 "kpi_reference": self.reference(wid, prompt, d0)}
         self._save(wid, state, now, "incident_detected",
                    f"hallucination rate {evidence['recent_rate']:.1%} on {prompt} vs {evidence['baseline_rate']:.1%} "
                    f"baseline ({cur['connected']} connected calls, p={evidence['p_value']:.1e})", evidence)
@@ -208,19 +227,23 @@ class IncidentDetector:
         if after["connected"] < MIN_CONNECTED:
             return
         base = self.baseline(wid, d0)
-        evidence = {"after": after, "baseline": base, "after_rate": round(rate(after["halluc"], after["connected"]), 4),
+        ref = state.get("kpi_reference") or base
+        evidence = {"after": after, "baseline": base, "kpi_reference": ref,
+                    "after_rate": round(rate(after["halluc"], after["connected"]), 4),
                     "after_engagement": round(rate(after["engaged"], after["connected"]), 4),
-                    "baseline_engagement": round(rate(base["engaged"], base["connected"]), 4)}
+                    "baseline_engagement": round(rate(ref["engaged"], ref["connected"]), 4),
+                    "after_pickup": round(rate(after["connected"], after["dials"]), 4),
+                    "baseline_pickup": round(rate(ref["connected"], ref["dials"]), 4)}
         still_bad = self.is_incident(after, base)
-        eng_drop = (rate(after["engaged"], after["connected"]) < (1 - ENGAGEMENT_MAX_REL_DROP) * rate(base["engaged"], base["connected"])
-                    and p_less(after["engaged"], after["connected"], base["engaged"], base["connected"]) < P_ENGAGEMENT_DROP)
-        if not still_bad and not eng_drop:
+        fell = self.kpis_fell(after, ref, wf["objective"])
+        if not still_bad and not fell:
             return self._close(wid, now, "incident_resolved",
                                f"fixed: hallucination {evidence['after_rate']:.1%} on {prompt} "
                                f"(was {state['detect_evidence']['recent_rate']:.1%}), engagement "
-                               f"{evidence['after_engagement']:.1%} vs {evidence['baseline_engagement']:.1%} history",
+                               f"{evidence['after_engagement']:.1%}, pickup {evidence['after_pickup']:.1%} (before the bad prompt: "
+                               f"{evidence['baseline_engagement']:.1%}, {evidence['baseline_pickup']:.1%})",
                                state, evidence)
-        why = "hallucinations still high" if still_bad else "engagement fell (guardrail)"
+        why = "hallucinations still high" if still_bad else " and ".join(fell)
         good = state["known_good"]
         if good and prompt != good and good in state["validations"] and \
                 state["validations"][good]["pass_rate"] >= wf["governance"]["min_validation_pass_rate"]:
@@ -229,6 +252,21 @@ class IncidentDetector:
             return self._propose(wid, state, good, now, reason="revert")
         self._close(wid, now, "incident_unresolved", f"ALERT: {why} on {prompt} and no safer prompt left; page on-call",
                     state, evidence)
+
+    @staticmethod
+    def kpis_fell(after, base, objective):
+        """Which of the workflow's KPIs got significantly worse after the change (empty list = none).
+        Primary: relative drop > PRIMARY_MAX_REL_DROP. Guardrail: absolute drop > the policy's max_drop."""
+        limits = [(objective["primary"], "primary", None)]
+        limits += [(k.removesuffix("_max_drop"), "guardrail", v) for k, v in objective.get("guardrail", {}).items()]
+        fell = []
+        for kpi, role, max_drop in limits:
+            num, den = KPI[kpi]
+            a, b = rate(after[num], after[den]), rate(base[num], base[den])
+            too_far = (b - a > max_drop) if max_drop is not None else (a < (1 - PRIMARY_MAX_REL_DROP) * b)
+            if too_far and p_less(after[num], after[den], base[num], base[den]) < P_KPI_DROP:
+                fell.append(f"{kpi} fell ({role}: {a:.1%} vs {b:.1%})")
+        return fell
 
     # ---------------------------------------------------------------- helpers
 

@@ -8,6 +8,7 @@ from controller.incident import IncidentDetector
 D0 = "2027-01-04T00:00:00+05:30"
 NOW = "2027-01-07T19:00:00+05:30"
 GOV = {"min_validation_pass_rate": 0.97}
+OBJECTIVE = {"primary": "engagement_rate", "guardrail": {"pickup_rate_max_drop": 0.02}}
 
 
 class FakeLLM:
@@ -16,7 +17,7 @@ class FakeLLM:
         self.suggest_calls, self.validate_calls, self.prompt = 0, [], "P2"
 
     def workflows(self):
-        return [{"workflow_id": "wf", "governance": GOV}]
+        return [{"workflow_id": "wf", "governance": GOV, "objective": OBJECTIVE}]
 
     def config(self, wid):
         return {"config": {"prompt_version": self.prompt}}
@@ -160,3 +161,30 @@ def test_waiting_keeps_full_rationale_for_the_approver(conn):
     d.run("2027-01-07T20:00:00+05:30")      # still waiting for approver hours
     assert conn.execute("SELECT body_json FROM intents").fetchone()["body_json"] == first
     assert "passed validation" in first and "validation_pass_rates" in first
+
+
+def test_kpi_check_follows_the_workflow_objective():
+    base = {"dials": 10000, "connected": 5000, "engaged": 2500}
+    pickup_down = {"dials": 4000, "connected": 1800, "engaged": 900}     # pickup 45% vs 50%, engagement 50% flat
+    kyc = {"primary": "pickup_rate", "guardrail": {"engagement_rate_max_drop": 0.02}}
+    assert IncidentDetector.kpis_fell(pickup_down, base, OBJECTIVE) == ["pickup_rate fell (guardrail: 45.0% vs 50.0%)"]
+    assert IncidentDetector.kpis_fell(pickup_down, base, kyc) == []        # 10% relative: not past the primary limit
+    eng_down = {"dials": 4000, "connected": 2000, "engaged": 920}        # engagement 46% vs 50%: 4 points, 8% relative
+    assert IncidentDetector.kpis_fell(eng_down, base, OBJECTIVE) == []     # primary: under the 10% relative limit
+    assert IncidentDetector.kpis_fell(eng_down, base, kyc) == ["engagement_rate fell (guardrail: 46.0% vs 50.0%)"]
+    noise = {"dials": 400, "connected": 190, "engaged": 95}             # 47.5% pickup on 400 dials: not significant
+    assert IncidentDetector.kpis_fell(noise, base, OBJECTIVE) == []
+
+
+def test_verify_compares_with_the_healthy_day_before_the_bad_prompt_not_history(conn):
+    # pickup fell on D2 for another reason (a flagged caller ID): 600 / 3600 = 16.7% vs 25% in history
+    conn.execute("INSERT INTO stats VALUES ('wf', '2027-01-06T15', 1, 'default', 'prompt_version', 'P1', 3600, 600, 300, 8)")
+    conn.execute("INSERT INTO stats VALUES ('wf', '2027-01-07T15', 2, 'default', 'prompt_version', 'P2', 3600, 600, 300, 26)")
+    llm = FakeLLM({"P1": 0.985, "P3": 0.993, "P4": 0.973})
+    d = det(conn, llm)
+    d.run(NOW)
+    llm.prompt = "P1"
+    d.run("2027-01-08T11:00:00+05:30")
+    conn.execute("INSERT INTO stats VALUES ('wf', '2027-01-08T11', 3, 'default', 'prompt_version', 'P1', 1800, 300, 150, 4)")
+    d.run("2027-01-08T14:00:00+05:30")
+    assert audit_kinds(conn)[-1] == "incident_resolved"     # vs history (25%) this was a false guardrail alert

@@ -46,6 +46,9 @@ URGENT_REJECT_COOLDOWN_HOURS = 2   # an open incident can't wait a day; ask agai
 # Normal changes leave one request of max_requests_per_24h in reserve for an urgent one (incident fix or a
 # stale-base re-proposal), and skip the approver's first hour (stand-ups, morning queue).
 QUIET_FIRST_HOURS = 1
+# Approver fatigue: even when the policy allows more, at most this many normal requests per workflow per day.
+# Batching means a day's changes fit in one or two; a supervisor asked for "two a day, maximum".
+MAX_NORMAL_REQUESTS_PER_24H = 2
 
 
 # ---------------------------------------------------------------- config helpers (pure)
@@ -380,7 +383,7 @@ class Governance:
                AND status != 'abandoned' AND created_at > ?""",
             (wid, _shift_ts(now, -24))).fetchone()["n"]
         cap = gov["max_requests_per_24h"]
-        return sent < (cap if urgent else max(1, cap - 1))
+        return sent < (cap if urgent else max(1, min(cap - 1, MAX_NORMAL_REQUESTS_PER_24H)))
 
     def _approval_payload(self, wid, base, config, new, intents, gov, now):
         all_cohorts = None if any(i.get("cohorts") is None for i in intents) else \

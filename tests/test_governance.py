@@ -265,3 +265,12 @@ def test_tv_distance_and_dims():
     new = g.apply_patch(BASE_CFG, [[["allocations", "default", "caller_id"], {"D1": 1.0}]])
     assert g.changed_dims(BASE_CFG, new) == {"caller_id"}
     assert g.max_shift(BASE_CFG, new) == pytest.approx(0.5)
+
+
+def test_normal_requests_capped_at_two_a_day_even_if_policy_allows_more(conn):
+    gv = g.Governance(conn, FakeSim(gov_policy(auto=False, cap=4)))
+    for i in range(2):
+        store.insert_proposal(conn, f"p{i}", "wf", 1, {}, T(11 + i), status="rejected")
+    pol = gov_policy(auto=False, cap=4)
+    assert not gv._may_ask_approver("wf", pol, T(14), urgent=False)   # policy would allow 3 normal ones
+    assert gv._may_ask_approver("wf", pol, T(14), urgent=True)        # an incident fix still can
