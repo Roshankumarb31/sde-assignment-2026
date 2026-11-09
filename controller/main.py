@@ -97,6 +97,9 @@ class Controller:
         decisions = self.conn.execute(
             "SELECT COUNT(*) n FROM audit WHERE actor = 'controller' AND sim_ts >= ?", (since,)).fetchone()["n"]
         open_props = len(store.open_proposals(self.conn))
+        with store.atomic(self.conn):   # for the supervisor view, which reads only the store
+            store.kv_put(self.conn, "health", {"ts": st["ts"], "lag": st["last_event_id"] - cursor_eid,
+                                               "credits": st["credits_remaining"]})
         log.info("%s lag=%d events decisions=%d open_proposals=%d credits=%.0f",
                  st["ts"][:16], st["last_event_id"] - cursor_eid, decisions, open_props, st["credits_remaining"])
 

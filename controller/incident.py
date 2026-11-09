@@ -176,10 +176,13 @@ class IncidentDetector:
                    "baseline_history": ev["baseline"],
                    "validation_pass_rates": {pv: x["pass_rate"] for pv, x in state["validations"].items()},
                    "chosen": choice}
-        state.update(phase="proposed", chosen=choice, proposed_at=now, attempt=state.get("attempt", 0) + 1)
+        intent = dict(key="incident_prompt", patch=[[["prompt_version"], choice]], summary=summary,
+                      rationale=rationale, severity=1.0, dry_run=dry_run,
+                      evidence={"validation_run_id": v["run_id"]}, urgent=True)
+        state.update(phase="proposed", chosen=choice, proposed_at=now, attempt=state.get("attempt", 0) + 1,
+                     intent=intent)
         self._save(wid, state, now, "incident_propose", f"{reason}: {summary}", dry_run)
-        g.add_intent(self.conn, now, wid, "incident_prompt", [[["prompt_version"], choice]], summary, rationale,
-                     severity=1.0, dry_run=dry_run, evidence={"validation_run_id": v["run_id"]}, urgent=True)
+        g.add_intent(self.conn, now, wid, **intent)
 
     # ---------------------------------------------------------------- phase: wait for apply
 
@@ -191,12 +194,9 @@ class IncidentDetector:
             self._close(wid, now, "incident_superseded",
                         f"prompt changed to {prompt} by someone else (supervisor); stopping this incident flow", state)
         else:
-            # keep the request alive; this is a no-op while it's in flight and re-files after a rejection cool-down
-            v = state["validations"][state["chosen"]]
-            g.add_intent(self.conn, now, wid, "incident_prompt", [[["prompt_version"], state["chosen"]]],
-                         f"switch prompt {state['bad_prompt']} -> {state['chosen']} to stop a hallucination spike",
-                         "hallucination incident still open", 1.0, {"see": "incident_propose audit row"},
-                         evidence={"validation_run_id": v["run_id"]}, urgent=True)
+            # Keep the request alive with the SAME full content: a no-op while it's in flight, and it re-files
+            # after a rejection cool-down.
+            g.add_intent(self.conn, now, wid, **state["intent"])
 
     # ---------------------------------------------------------------- phase: verify
 

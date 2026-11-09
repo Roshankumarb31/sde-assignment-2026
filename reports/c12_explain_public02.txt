@@ -1,0 +1,70 @@
+# C12 evidence (2026-11-09): answers from runs/mine_public_02_incidents.db only
+
+$ python -m controller.explain --db state.db --workflow ks_cancel --at "D4 12:00"
+# ks_cancel at D4 12:00 (2027-01-08T12:00:00+05:30)
+Live config: v3 since D4 11:00 (changed prompt_version by controller_approved)
+
+## What and why (proposal p_c65374aa4c9086b9, route approval)
+Summary: switch prompt P2 -> P1 to stop a hallucination spike
+Rationale: Hallucinations on P2: 4.2% vs 1.4% baseline over 504 connected calls (p=1.0e-05). P1 passed validation at 98.5% (n=400, run val_00001). P1 is the last known-good prompt, so its engagement is known from history.
+Diff: {"prompt_version": {"from": "P2", "to": "P1"}}
+affected_leads: 1500
+impact_score: 1.0
+evidence: {"validation_run_id": "val_00001"}
+dry_run: {"incident_prompt": {"bad_prompt": {"connected": 504, "dials": 3000, "engaged": 239, "halluc": 21, "prompt": "P2"}, "baseline_history": {"connected": 16439, "dials": 65018, "engaged": 8288, "halluc": 225}, "chosen": "P1", "validation_pass_rates": {"P1": 0.985, "P3": 0.9925, "P4": 0.9725}}}
+
+## Who approved
+proposed D4 10:00 against v2
+D4 10:42 approver (apr_00001): approver: approved
+applied D4 11:00
+  context D3 19:00 incident_detected: hallucination rate 4.2% on P2 vs 1.4% baseline (504 connected calls, p=1.0e-05)
+  context D3 19:00 incident_propose: fix: switch prompt P2 -> P1 to stop a hallucination spike
+
+## What happened next (24 h before vs 24 h after; pickup and engagement kept separate)
+                  pickup  engagement  hallucination   dials
+before             17.3%       46.6%          4.10%    4800
+after              16.2%       51.7%          1.03%    4800
+  D4 12:00 incident_applied: prompt P1 is live; verifying
+  D4 15:00 incident_resolved: fixed: hallucination 1.5% on P1 (was 4.2%), engagement 53.4% vs 50.4% history
+
+$ python -m controller.explain --db state.db --workflow ks_cancel --at "D3 15:00"
+# ks_cancel at D3 15:00 (2027-01-07T15:00:00+05:30)
+Live config: v2 since D3 11:30 (changed prompt_version by supervisor)
+
+## Why
+A client supervisor edited the config directly (outside governance). We record it and never overwrite it silently.
+
+## What happened next (24 h before vs 24 h after; pickup and engagement kept separate)
+                  pickup  engagement  hallucination   dials
+before             16.5%       50.4%          1.52%    4800
+after              17.3%       46.6%          4.10%    4800
+  D3 19:00 incident_detected: hallucination rate 4.2% on P2 vs 1.4% baseline (504 connected calls, p=1.0e-05)
+  D3 19:00 llm_suggested: LLM suggested P3 (Grounded: benefit claims restricted to policy-schedule fields; tighter objection handling), P1 (Current production prompt), P4 (Persuasive: freer objection handling and richer benefit explanations)
+  D3 19:00 incident_propose: fix: switch prompt P2 -> P1 to stop a hallucination spike
+  D4 10:00 propose: switch prompt P2 -> P1 to stop a hallucination spike
+  D4 10:42 approval_decided: approver: approved
+  D4 11:00 applied: applied approved change -> v3
+  D4 11:00 config_applied: controller_approved changed prompt_version -> v3
+  D4 12:00 incident_applied: prompt P1 is live; verifying
+  D4 15:00 incident_resolved: fixed: hallucination 1.5% on P1 (was 4.2%), engagement 53.4% vs 50.4% history
+
+$ python -m controller.explain --db state.db --view
+# Controller view at D10 00:00   (ingest lag 0 events, credits left 185.0)
+
+## ks_cancel   last 24 h: pickup 16.5% · engagement 50.1% · hallucination 1.14%
+  Incident: none open
+  Testing: no experiment running
+  Waiting on you: nothing
+  Changed in last 24 h: nothing
+
+## nw_kyc   last 24 h: pickup 25.0% · engagement 63.2% · hallucination 1.20%
+  Incident: none open
+  Testing: no experiment running
+  Waiting on you: nothing
+  Changed in last 24 h: nothing
+
+## nw_renewal   last 24 h: pickup 26.5% · engagement 59.2% · hallucination 1.89%
+  Incident: none open
+  Testing: no experiment running
+  Waiting on you: nothing
+  Changed in last 24 h: nothing

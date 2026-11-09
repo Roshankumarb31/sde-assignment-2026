@@ -149,3 +149,14 @@ def test_supervisor_change_supersedes_flow(conn):
     llm.prompt = "P5"                                       # supervisor picked something else
     d.run("2027-01-08T09:00:00+05:30")
     assert audit_kinds(conn)[-1] == "incident_superseded"
+
+
+def test_waiting_keeps_full_rationale_for_the_approver(conn):
+    add_calls(conn, "2027-01-07T15", "P2", 600, 26, 300)
+    llm = FakeLLM({"P1": 0.985, "P3": 0.993, "P4": 0.973})
+    d = det(conn, llm)
+    d.run(NOW)
+    first = conn.execute("SELECT body_json FROM intents").fetchone()["body_json"]
+    d.run("2027-01-07T20:00:00+05:30")      # still waiting for approver hours
+    assert conn.execute("SELECT body_json FROM intents").fetchone()["body_json"] == first
+    assert "passed validation" in first and "validation_pass_rates" in first
