@@ -1,0 +1,20 @@
+# C8 evidence (2026-11-09). public_02 ks_cancel audit timeline from runs/mine_public_02_incidents.db
+01-07T11:30 supervisor_edit    supervisor supervisor changed prompt_version -> v2
+01-07T19:00 incident_detected  controller hallucination rate 4.2% on P2 vs 1.4% baseline (504 connected calls, p=1.0e-05)
+01-07T19:00 llm_suggested      controller LLM suggested P3 (Grounded: benefit claims restricted to policy-schedule fields; tighter objection handling), P1 (Current production prompt), P4 (Persuasive: freer objection handling and richer benefit explanations)
+01-07T19:00 validated          controller validation P1: pass_rate 0.985 (n=400)
+01-07T19:00 validated          controller validation P3: pass_rate 0.993 (n=400)
+01-07T19:00 validated          controller validation P4: pass_rate 0.973 (n=400)
+01-07T19:00 incident_propose   controller fix: switch prompt P2 -> P1 to stop a hallucination spike
+01-08T10:00 propose            controller switch prompt P2 -> P1 to stop a hallucination spike
+01-08T10:42 approval_decided   approver   approver: approved
+01-08T11:00 applied            controller applied approved change -> v3
+01-08T12:00 incident_applied   controller prompt P1 is live; verifying
+01-08T15:00 incident_resolved  controller fixed: hallucination 1.5% on P1 (was 4.2%), engagement 53.4% vs 50.4% history
+
+# grade, public_02 (reports/public_02_incidents.md):
+| ks_cancel | 0.259 | +4.6% | 0.183 | -0.2% | 0.497 | +4.3% | 25% | 77 (330) |
+    "mttr_minutes": 1410,
+Credits used: 15 · validation runs: 3 · LLM fix calls: 1
+# public_01 (no incidents in this world): incident alarms = 0, Credits used: 0 · validation runs: 0 · LLM fix calls: 0
+# (first version used a z-test and raised a false alarm on public_01 nw_renewal: 8/206 calls, exact p=0.0068; fixed with exact binomial + per-look alpha)

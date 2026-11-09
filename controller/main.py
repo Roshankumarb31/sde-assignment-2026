@@ -9,10 +9,12 @@ import argparse
 import logging
 import os
 import time
+from datetime import datetime, timedelta
 
 from controller import store
 from controller.client import Finished, SimClient
 from controller.governance import Governance
+from controller.incident import IncidentDetector
 from controller.ingest import Ingestor
 
 log = logging.getLogger("controller")
@@ -38,8 +40,10 @@ def open_store_for(client, path):
                 os.rename(path + suffix, aside + suffix)
         log.warning("state file belonged to another simulator run; moved to %s and starting fresh", aside)
         conn = store.open_db(path)
+    # D0 (start of the live scenario) separates history (baselines) from live data.
+    d0 = (datetime.fromisoformat(st["ts"]) - timedelta(minutes=st["sim_minute"])).isoformat()
     with store.atomic(conn):
-        store.kv_put(conn, "world", {"scenario": st["scenario"]})
+        store.kv_put(conn, "world", {"scenario": st["scenario"], "d0": d0})
     return conn
 
 
@@ -48,7 +52,8 @@ class Controller:
         self.conn, self.client, self.step = conn, client, step
         self.ingest = Ingestor(conn, client)
         self.gov = Governance(conn, client)
-        self.detectors = []          # objects with .run(now); added by later modules (incident, caller ID)
+        # Detectors only read the store and file intents; governance is the only thing that changes config.
+        self.detectors = [IncidentDetector(conn, client, self.gov)]
         self._hour_mark = None
 
     def run(self):

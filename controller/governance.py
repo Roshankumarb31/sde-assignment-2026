@@ -42,6 +42,7 @@ log = logging.getLogger("governance")
 ALLOC_DIMS = ("welcome_message", "voice", "caller_id")
 CUSTOMER_FACING = {"welcome_message", "voice", "prompt_version", "cohorts"}
 REJECT_COOLDOWN_HOURS = 24
+URGENT_REJECT_COOLDOWN_HOURS = 2   # an open incident can't wait a day; ask again with fresh evidence
 # Normal changes leave one request of max_requests_per_24h in reserve for an urgent one (incident fix or a
 # stale-base re-proposal), and skip the approver's first hour (stand-ups, morning queue).
 QUIET_FIRST_HOURS = 1
@@ -472,14 +473,17 @@ class Governance:
     def _close(self, pid, wid, now, status, summary, reopen, cooldown=False):
         with store.atomic(self.conn):
             store.update_proposal(self.conn, pid, status=status, decided_at=now, reason=summary)
-            for r in self.conn.execute("SELECT intent_id FROM intents WHERE proposal_id = ?", (pid,)).fetchall():
+            for r in self.conn.execute("SELECT intent_id, body_json FROM intents WHERE proposal_id = ?",
+                                       (pid,)).fetchall():
                 if reopen:
                     self.conn.execute("UPDATE intents SET status = 'open', proposal_id = NULL WHERE intent_id = ?",
                                       (r["intent_id"],))
                 else:
                     self.conn.execute("UPDATE intents SET status = 'dropped' WHERE intent_id = ?", (r["intent_id"],))
                 if cooldown:
-                    store.kv_put(self.conn, f"cooldown:{r['intent_id']}", _shift_ts(now, REJECT_COOLDOWN_HOURS))
+                    urgent = json.loads(r["body_json"]).get("urgent")
+                    hours = URGENT_REJECT_COOLDOWN_HOURS if urgent else REJECT_COOLDOWN_HOURS
+                    store.kv_put(self.conn, f"cooldown:{r['intent_id']}", _shift_ts(now, hours))
             store.add_audit(self.conn, now, status, summary, "controller", wid, proposal_id=pid)
 
     def _set_intent(self, intent_id, status, pid, tx=True):
