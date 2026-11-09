@@ -1,0 +1,18 @@
+# PYTHONPATH=. python scripts/governance_live_check.py  (public_02, 2026-11-09)
+01-04T09:00 nw_renewal  intent           controller           wants: shift caller-ID weight toward D1
+01-04T09:00 nw_kyc      intent           controller           wants: split voice V1/V2 50:50
+01-04T09:00 ks_cancel   intent           controller           wants: try voice V2 on 10% of calls
+01-04T09:00 nw_renewal  auto_applied     controller           auto-applied caller_id -> v2 (governance live check)
+01-04T09:00 nw_renewal  config_applied   controller_auto      controller_auto changed caller_id -> v2
+01-04T11:00 ks_cancel   propose          controller           try voice V2 on 10% of calls
+01-04T11:00 nw_kyc      propose          controller           split voice V1/V2 50:50
+01-04T12:56 ks_cancel   approval_decided approver             approver: approved
+01-04T14:00 ks_cancel   applied          controller           applied approved change -> v2
+01-04T14:00 ks_cancel   config_applied   controller_approved  controller_approved changed voice -> v2
+01-05T10:00 nw_kyc      approval_decided approver             approver: approved
+01-05T11:00 nw_kyc      applied          controller           applied approved change -> v2
+01-05T11:00 nw_kyc      config_applied   controller_approved  controller_approved changed voice -> v2
+
+{'workflow_id': 'nw_renewal', 'route': 'auto', 'status': 'applied', 'approval_id': None, 'created_at': '2027-01-04T09:00:00+05:30', 'applied_at': '2027-01-04T09:00:00+05:30'}
+{'workflow_id': 'ks_cancel', 'route': 'approval', 'status': 'applied', 'approval_id': 'apr_00001', 'created_at': '2027-01-04T11:00:00+05:30', 'applied_at': '2027-01-04T14:00:00+05:30'}
+{'workflow_id': 'nw_kyc', 'route': 'approval', 'status': 'applied', 'approval_id': 'apr_00002', 'created_at': '2027-01-04T11:00:00+05:30', 'applied_at': '2027-01-05T11:00:00+05:30'}

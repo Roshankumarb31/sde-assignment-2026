@@ -62,11 +62,13 @@ CREATE TABLE IF NOT EXISTS campaigns (
     leads          INTEGER NOT NULL
 );
 
--- Proposal lifecycle (see governance.py):
--- pending -> approved | rejected | expired ; approved -> applied | lapsed ; plus auto_applied, stale.
+-- Proposal lifecycle (see governance.py for the full state machine):
+-- approval route: sending -> pending -> approved | rejected | expired ; approved -> applied | lapsed | stale
+-- auto route:     auto_sending -> applied | forbidden | stale
 CREATE TABLE IF NOT EXISTS proposals (
     proposal_id  TEXT PRIMARY KEY,   -- hash(workflow, base_version, config): retries are idempotent
     workflow_id  TEXT NOT NULL,
+    route        TEXT NOT NULL DEFAULT 'approval',   -- approval | auto
     status       TEXT NOT NULL,
     base_version INTEGER NOT NULL,
     payload_json TEXT NOT NULL,      -- exact body sent to the simulator
@@ -78,6 +80,18 @@ CREATE TABLE IF NOT EXISTS proposals (
 );
 CREATE INDEX IF NOT EXISTS proposals_wf_status ON proposals (workflow_id, status);
 CREATE INDEX IF NOT EXISTS proposals_approval ON proposals (approval_id);
+
+-- Changes that detectors want. Governance batches all open intents of a workflow into ONE proposal,
+-- rebuilt on top of the latest config each time (so re-proposals use fresh data).
+CREATE TABLE IF NOT EXISTS intents (
+    intent_id    TEXT PRIMARY KEY,   -- '<workflow>:<key>', e.g. 'nw_renewal:caller_id' (one per concern)
+    workflow_id  TEXT NOT NULL,
+    status       TEXT NOT NULL,      -- open | proposed | done | dropped
+    body_json    TEXT NOT NULL,      -- patch, summary, rationale, severity, dry_run, evidence, cohorts, urgent
+    created_at   TEXT NOT NULL,
+    proposal_id  TEXT
+);
+CREATE INDEX IF NOT EXISTS intents_wf_status ON intents (workflow_id, status);
 
 -- Append-only decision log. Answers "why did X change, who approved it, what happened next".
 CREATE TABLE IF NOT EXISTS audit (
@@ -235,12 +249,14 @@ def total_stats(conn, workflow_id, since_hour, until_hour=None, **kw):
 
 # ---------------------------------------------------------------- proposals
 
-def insert_proposal(conn, proposal_id, workflow_id, base_version, payload, created_at, status="pending"):
+def insert_proposal(conn, proposal_id, workflow_id, base_version, payload, created_at, status="pending",
+                    route="approval"):
     """INSERT OR IGNORE: inserting the same proposal_id twice (retry after crash) is harmless."""
     conn.execute(
-        """INSERT OR IGNORE INTO proposals (proposal_id, workflow_id, status, base_version, payload_json, created_at)
-           VALUES (?,?,?,?,?,?)""",
-        (proposal_id, workflow_id, status, base_version, json.dumps(payload, sort_keys=True), created_at))
+        """INSERT OR IGNORE INTO proposals (proposal_id, workflow_id, route, status, base_version, payload_json,
+                                            created_at)
+           VALUES (?,?,?,?,?,?,?)""",
+        (proposal_id, workflow_id, route, status, base_version, json.dumps(payload, sort_keys=True), created_at))
 
 
 def update_proposal(conn, proposal_id, **fields):
@@ -262,9 +278,12 @@ def get_proposal(conn, proposal_id):
     return conn.execute("SELECT * FROM proposals WHERE proposal_id = ?", (proposal_id,)).fetchone()
 
 
+OPEN_STATUSES = ("sending", "auto_sending", "pending", "approved")
+
+
 def open_proposals(conn, workflow_id=None):
-    """Proposals still in flight: waiting for a decision, or approved but not yet applied."""
-    sql = "SELECT * FROM proposals WHERE status IN ('pending', 'approved')"
+    """Proposals still in flight: being sent, waiting for a decision, or approved but not yet applied."""
+    sql = f"SELECT * FROM proposals WHERE status IN {OPEN_STATUSES}"
     if workflow_id is None:
         return conn.execute(sql + " ORDER BY created_at").fetchall()
     return conn.execute(sql + " AND workflow_id = ? ORDER BY created_at", (workflow_id,)).fetchall()
