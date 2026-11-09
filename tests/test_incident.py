@@ -136,10 +136,20 @@ def test_no_passing_candidate_alerts(conn):
     assert conn.execute("SELECT COUNT(*) n FROM intents").fetchone()["n"] == 0
 
 
-def test_out_of_credits_alerts(conn):
+def test_out_of_credits_before_any_validation_alerts(conn):
     add_calls(conn, "2027-01-07T15", "P2", 600, 26, 300)
-    det(conn, FakeLLM({"P1": 0.99, "P3": 0.99, "P4": 0.99}, credits=8)).run(NOW)
+    det(conn, FakeLLM({"P1": 0.99, "P3": 0.99, "P4": 0.99}, credits=6)).run(NOW)   # suggest, then 3 left
     assert audit_kinds(conn)[-1] == "incident_no_credits"
+    assert conn.execute("SELECT COUNT(*) n FROM intents").fetchone()["n"] == 0
+
+
+def test_out_of_credits_after_known_good_passed_still_proposes_it(conn):
+    add_calls(conn, "2027-01-07T15", "P2", 600, 26, 300)
+    llm = FakeLLM({"P1": 0.99, "P3": 0.99, "P4": 0.99}, credits=8)                # enough for P1 only
+    det(conn, llm).run(NOW)
+    assert llm.validate_calls == ["P1"]
+    assert audit_kinds(conn)[-3:] == ["validated", "credits_exhausted", "incident_propose"]
+    assert '"validation_run_id": "val_P1"' in conn.execute("SELECT body_json FROM intents").fetchone()["body_json"]
 
 
 def test_supervisor_change_supersedes_flow(conn):

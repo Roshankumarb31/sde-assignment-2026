@@ -335,7 +335,7 @@ intent (open) ──governance tick──> proposal
   pass_rate ≥ `min_validation_pass_rate` qualify. The **known-good** prompt wins if it qualifies, because validation says
   nothing about engagement; otherwise the highest pass rate wins. Fixed rule, never the LLM. The request is urgent and
   carries `evidence.validation_run_id`.
-- **Credit spend:** 15 per incident (3 + 3 × 4); 0 without an incident. Out of credits mid-flow → an ALERT, not a guess.
+- **Credit spend:** 15 per incident (3 + 3 × 4); 0 without an incident. Out of credits mid-flow → propose the best candidate that already passed validation (the known-good prompt is validated first, so usually that one); an ALERT only if none has passed. Never a guess.
 - **Verification:** once the new prompt has 200 connected calls: re-run the incident test, and check the primary KPI and
   the guardrail against the 24 h before the bad prompt went live (§5). If either fails → propose the known-good prompt
   (if it passed validation) or raise an ALERT.
@@ -454,7 +454,7 @@ ORDER BY a.id;
 
 **Would page (each message says what to look at):**
 - `incident_unresolved`: a fix was applied and failed, and there's no validated prompt left — a human must choose.
-- `incident_no_credits`: credits ran out mid-incident.
+- `incident_no_credits`: credits ran out mid-incident before any candidate passed validation.
 - `incident_no_fix`: no candidate prompt passed validation.
 - Ingest lag growing for 3 hours in a row, or the controller not writing its hourly health record for 2 hours.
 - Repeated 5xx after all retries (the loop stops advancing).

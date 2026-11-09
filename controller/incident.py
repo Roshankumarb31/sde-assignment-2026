@@ -162,9 +162,13 @@ class IncidentDetector:
                 self._save(wid, state, now, "validated", f"validation {pv}: pass_rate {v['pass_rate']:.3f} (n={v['n']})",
                            {"validation": v})
         except CreditsExhausted as e:
-            self._close(wid, now, "incident_no_credits", f"ALERT: out of credits mid-incident ({e.detail}); "
-                        "page on-call to fix the prompt by hand", state)
-            return
+            # A candidate that already passed is still a safe fix; only page on-call if none has.
+            if self.choose(state, min_pass) is None:
+                self._close(wid, now, "incident_no_credits", f"ALERT: out of credits mid-incident ({e.detail}); "
+                            "page on-call to fix the prompt by hand", state)
+                return
+            self._save(wid, state, now, "credits_exhausted", f"out of credits ({e.detail}); "
+                       "proposing the best candidate already validated", {"detail": e.detail})
         choice = self.choose(state, min_pass)
         if choice is None:
             self._close(wid, now, "incident_no_fix", "ALERT: no candidate prompt passed validation "
